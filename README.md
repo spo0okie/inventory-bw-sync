@@ -10,7 +10,7 @@
     * если никого из состава команды сервиса нет в BW(VW) - коллекция не создается (технически не возможно)
 
 ## Требования
-  * [vaultWarden](https://github.com/dani-garcia/vaultwarden)
+  * [VaultWarden](https://github.com/dani-garcia/vaultwarden)
   * [Bitwarden CLI](https://bitwarden.com/help/cli/)
     * Для работы с self-hosted сервером с непубличным сертификатом нужен не бинарник а установленный через NPM
    
