@@ -45,9 +45,6 @@ ord-collection template:
 //$inventoryCache=[];
 #require_once __DIR__ . '/vendor/autoload.php';
 
-const ORG_ID="4b07ad22-e766-49b6-8ad5-9b025f3991f0";
-const COL_ROOT="Сервисы";
-
 include dirname(__FILE__).'/config.priv.php';
 require_once dirname(__FILE__).'/lib_inventoryApi.php';
 require_once dirname(__FILE__).'/lib_bwApi.php';
