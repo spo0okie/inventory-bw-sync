@@ -169,7 +169,7 @@ function renderCollection($collection) {
 
 function yn($question) {
 	while (true) {
-		$answer=readline($$auestion);
+		$answer=readline($question);
 		if ($answer=='y') return true;
 		if ($answer=='n') return false;
 	}
