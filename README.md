@@ -14,4 +14,13 @@
     * Для работы с self-hosted сервером с непубличным сертификатом нужен не бинарник а установленный через NPM
    
 ## Инструкция
-  
+  * ```bash
+    mkdir -p /opt/inventory-bw-sync
+    cd /opt/inventory-bw-sync
+    git clone https://github.com/spo0okie/inventory-bw-sync.git .
+    mv config.priv.sample.php config.priv.php```
+  * настраиваем конфиг **config.priv.php**
+    * пользователь для авторизации в Инвентаризации должен иметь права на чтение списка сервисов
+    * пользователь для авторизации в BW(VW) должен иметь права на запись в корневой коллекции
+      * Хэшированный пароль можно посмотреть через Chrome Developer Tools (F12) -> network -> запрос метода **token** -> поле **password**
+  * php ./sync.php
