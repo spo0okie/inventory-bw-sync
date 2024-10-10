@@ -2,11 +2,18 @@
 <?php
 /*
 v1		+ поиск service в inventory
+v1.1    + рабочая схема синхронизации коллекций и ACL
+v1.2    ! bug fixes
+v1.3    + учет наличия суперпользователей
 */
 
 /**
  * @var $webInventory string
  * @var $inventoryAuth string
+ * @var $vwUrl string
+ * @var $vwLogin string
+ * @var $vwWebPassword string
+ * @var $vwCliPassword string
  */
 
 /*
@@ -93,7 +100,7 @@ function inventoryTeam2Bw($team) {
 		$user=$bw->findUser(ORG_ID,['email'=>$mail]);
 		//echo $mail.' ';
 		//print_r($user);
-		if (is_array($user)) {
+		if (is_array($user) && !$user['accessAll']) {
 			$users[$user['id']]=$user;
 		}
 	}
@@ -117,12 +124,12 @@ function colParams($service) {
 	$team=serviceTeam($service);
 	if (!count($team)) {
 		echo " - У сервиса нет команды в инвентори!\n";
-		return;
+		return null;
 	}
 	$users=inventoryTeam2Bw($team);
 	if (!count($users)) {
 		echo " - У сервиса нет команды в VW! :".implode(", ",array_keys($team))."\n";
-		return;
+		return null;
 	}
 	$access=[];
 	foreach (array_keys($users) as $id) {
@@ -182,7 +189,7 @@ function yn($question) {
 
 /**
  * @param $service array Сервис из инвентори для работы
- * @param $authorizedAcl авторизованное ранее изменение доступа (переданное от родительской папки)
+ * @param $authorizedAcl string авторизованное ранее изменение доступа (переданное от родительской папки)
  *                       позволит при изменении прав на ветви не подтверждать отдельно каждое звено
  */
 function parseService($service,$authorizedAcl='') {

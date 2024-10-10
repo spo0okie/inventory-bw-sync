@@ -43,9 +43,11 @@ class bwApi {
 		if (!is_array($json) || !isset($json['access_token'])) {
 			echo "ERROR AUTHENTICATING VW WEB\n";
 			exit;
+			/*
 			var_dump(curl_getinfo($ch));
 			var_dump($json);
 			var_dump($ch);
+			*/
 		}
 		$this->token=$json['access_token'];
 		curl_close($ch);
@@ -113,18 +115,19 @@ class bwApi {
 	public function cache_users($org_id, $force=false) {
 		if (isset($this->cache['users']) && !$force) return;
 		$this->init_session();
-		$data=exec("bw list org-members --organizationid ".$org_id." --session ".$this->session);
-		if (strlen($data)) {
-			$users=JSON_DECODE($data,true);
-			foreach($users as $i=>$user) {
-				$mail=arrHelper::getField($user,'Email','');
-				$users['Email']=strtolower($mail);
-			}
-			$this->cache['users']=$users;
-		} else {
-			echo "Error loading CLI collections\n";
-			exit;
-		}
+        $data=$this->getReq('/api/organizations/'.$org_id.'/users');
+        if (strlen($data) && is_array($json=JSON_DECODE($data,true)) && isset($json['data'])) {
+            $this->cache['users']=[];
+            foreach($json['data'] as $user ) {
+                $this->cache['users'][$user['id']]=$user;
+            }
+            //print_r($collections['data']);
+            //exit;
+            //$this->cache['collections']=JSON_DECODE($data,true);
+        } else {
+            echo "Error loading WEB-API users\n";
+            exit;
+        }
 
 		//print_r($this->cache);
 	}
@@ -141,6 +144,7 @@ class bwApi {
 
 	public function getCollectionUsers($col) {
 		if (isset($col['users'])) return $col['users'];
+		return null;
 	}
 
 	public function createCollection($col) {
