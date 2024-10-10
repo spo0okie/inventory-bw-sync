@@ -202,7 +202,7 @@ class bwApi {
 	        print_r($item);
 	        return;
         }
-	    $encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE);
+	    $encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
 	    if (!strlen($encoded)) {
             print_r($item);
             echo json_last_error_msg();
