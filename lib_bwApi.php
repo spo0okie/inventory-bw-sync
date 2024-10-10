@@ -65,6 +65,8 @@ class bwApi {
 		}
 
 		$this->session=$data;
+
+        exec("bw sync");
 	}
 
 	public function getReq($path) {
