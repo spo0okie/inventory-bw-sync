@@ -198,7 +198,6 @@ class bwApi {
     }
 
     public function updateItem($item) {
-        print_r($item);
 	    if (!isset($item['id'])) {
 	        print_r($item);
 	        return;
@@ -206,6 +205,7 @@ class bwApi {
 	    $encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE);
 	    if (!strlen($encoded)) {
             print_r($item);
+            echo json_last_error_msg();
             return;
         }
         $cmd='export BW_SESSION='.$this->session.' && '
