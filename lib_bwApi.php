@@ -198,12 +198,18 @@ class bwApi {
     }
 
     public function updateItem($item) {
+        print_r($item);
 	    if (!isset($item['id'])) {
 	        print_r($item);
 	        return;
         }
+	    $encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE);
+	    if (!strlen($encoded)) {
+            print_r($item);
+            return;
+        }
         $cmd='export BW_SESSION='.$this->session.' && '
-            .'echo \''.JSON_ENCODE($item,JSON_UNESCAPED_UNICODE).'\' | '
+            .'echo \''.$encoded.'\' | '
             .'bw encode | '
             .'bw edit item '.$item['id'];
         echo $cmd."\n";
