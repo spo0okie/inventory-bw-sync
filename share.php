@@ -97,7 +97,7 @@ function parseItem($item) {
 
     foreach ($strings as $i=>$string) {
         if (isShareRequest($string)) {
-            $edits=['id'=>$item['id']];
+            $edits=$item;
 
             $path=getShareTokens($string)[0];
             $collection=$bw->findCollection(ORG_ID,['name'=>$path]);
