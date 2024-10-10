@@ -74,7 +74,6 @@ class bwApi {
 		curl_setopt($ch, CURLOPT_URL,$this->baseUrl.$path);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER,1);
 		curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json' , $authorization ]);
-		//curl_setopt($ch, CURLOPT_VERBOSE,true);
 		$result=curl_exec($ch);
 		curl_close($ch);
 		return $result;
@@ -153,7 +152,7 @@ class bwApi {
 
         $this->init_session();
 
-        $data=exec("bw list items");
+        $data=exec("bw list items --session ".$this->session);
         if (strlen($data)) {
             $items=JSON_DECODE($data,true);
             $this->cache['items']=$items;
@@ -203,7 +202,7 @@ class bwApi {
             .'echo \''.JSON_ENCODE($item,JSON_UNESCAPED_UNICODE).'\' | '
             .'bw encode | '
             .'bw edit item '.$item['id'];
-        //echo $cmd."\n";
+        echo $cmd."\n";
         exec($cmd);
         //$this->cache_collections($col['organizationId'],true);
     }
