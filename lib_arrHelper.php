@@ -299,4 +299,17 @@ class arrHelper {
 	    return false;
     }
 
+    /**
+     * Убирает из массива элемент со значением value
+     * Индексы не сохраняются
+     * @param $array
+     * @param $value
+     */
+    public static function exclude($array,$value) {
+        $result=[];
+        foreach ($array as $item) {
+            if ($item!==$value) $result[]=$item;
+        }
+        return $result;
+    }
 }

@@ -102,16 +102,33 @@ class bwApi {
 				$this->cache['collections'][$i]['users']=$additional['users'];
 				$this->cache['collections'][$i]['groups']=$additional['groups'];
 			}
-			//print_r($collections['data']);
-			//exit;
-			//$this->cache['collections']=JSON_DECODE($data,true);
 		} else {
 			echo "Error loading WEB-API collections\n";
 			exit;
 		}
-		//print_r($this->cache);
 	}
 
+	/*
+	 {
+    "continuationToken": null,
+    "data": [
+        {
+            "accessAll": true,
+            "collections": [],
+            "email": "user@domain.tld",
+            "externalId": null,
+            "groups": [],
+            "id": "11111111-2222-3333-4444-555555555555",
+            "name": "somename",
+            "object": "organizationUserUserDetails",
+            "resetPasswordEnrolled": false,
+            "status": 2,
+            "twoFactorEnabled": false,
+            "type": 0,
+            "userId": "11111111-2222-3333-4444-555555555555" //не то же самое что ID
+        },
+	]}
+	 */
 	public function cache_users($org_id, $force=false) {
 		if (isset($this->cache['users']) && !$force) return;
 		$this->init_session();
@@ -130,6 +147,20 @@ class bwApi {
         }
 
 		//print_r($this->cache);
+	}
+    public function cache_items($force=false) {
+        if (isset($this->cache['items']) && !$force) return;
+
+        $this->init_session();
+
+        $data=exec("bw list items");
+        if (strlen($data)) {
+            $items=JSON_DECODE($data,true);
+            $this->cache['items']=$items;
+        } else {
+            echo "Error loading CLI items\n";
+            exit;
+        }
 	}
 
 	public function findCollection($org_id,$filter) {
@@ -157,14 +188,24 @@ class bwApi {
 		//$this->cache_collections($col['organizationId'],true);
 	}
 
-	public function updateCollection($col) {
-		$cmd='export BW_SESSION='.$this->session.' && '
-			.'echo \''.JSON_ENCODE($col,JSON_UNESCAPED_UNICODE).'\' | '
-			.'bw encode | '
-			.'bw edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'];
-		//echo $cmd."\n";
-		exec($cmd);
-		//$this->cache_collections($col['organizationId'],true);
-	}
+    public function updateCollection($col) {
+        $cmd='export BW_SESSION='.$this->session.' && '
+            .'echo \''.JSON_ENCODE($col,JSON_UNESCAPED_UNICODE).'\' | '
+            .'bw encode | '
+            .'bw edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'];
+        //echo $cmd."\n";
+        exec($cmd);
+        //$this->cache_collections($col['organizationId'],true);
+    }
+
+    public function updateItem($item) {
+        $cmd='export BW_SESSION='.$this->session.' && '
+            .'echo \''.JSON_ENCODE($item,JSON_UNESCAPED_UNICODE).'\' | '
+            .'bw encode | '
+            .'bw edit item '.$item['id'];
+        //echo $cmd."\n";
+        exec($cmd);
+        //$this->cache_collections($col['organizationId'],true);
+    }
 
 }
