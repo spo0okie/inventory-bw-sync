@@ -154,11 +154,11 @@ function collectionUsersRender($collection) {
 }
 
 function compareCollections($old,$new) {
-	$result='';
-	if ($old['name']!=$new['name']) $result="\e[1;33;40mПуть:\e[0;37;40m \e[0;31;40m".$old['name']."\e[0;37;40m -> \e[1;32;40m".$new['name']."\e[0;37;40m\n";
+	$result=[];
+	if ($old['name']!=$new['name']) $result['path']="\e[1;33;40mПуть:\e[0;37;40m \e[0;31;40m".$old['name']."\e[0;37;40m -> \e[1;32;40m".$new['name']."\e[0;37;40m\n";
 	$oUsers=collectionUsersRender($old);
 	$nUsers=collectionUsersRender($new);
-	if ($oUsers != $nUsers) $result.="\e[1;33;40mДоступ:\e[0;37;40m \e[0;31;40m".$oUsers."\e[0;37;40m -> \e[1;32;40m".$nUsers."\e[0;37;40m\n";
+	if ($oUsers != $nUsers) $result['acl']="\e[1;33;40mДоступ:\e[0;37;40m \e[0;31;40m".$oUsers."\e[0;37;40m -> \e[1;32;40m".$nUsers."\e[0;37;40m\n";
 	return $result;
 }
 
@@ -167,15 +167,25 @@ function renderCollection($collection) {
 	echo "\e[1;33;40mДоступ:\e[0;37;40m ".collectionUsersRender($collection)."\n";
 }
 
+function renderCompare($compare) {
+	echo $compare['path']??'';
+	echo $compare['acl']??'';
+}
+
 function yn($question) {
 	while (true) {
-		$answer=readline($$auestion);
+		$answer=readline($question);
 		if ($answer=='y') return true;
 		if ($answer=='n') return false;
 	}
 }
 
-function parseService($service) {
+/**
+ * @param $service array Сервис из инвентори для работы
+ * @param $authorizedAcl авторизованное ранее изменение доступа (переданное от родительской папки)
+ *                       позволит при изменении прав на ветви не подтверждать отдельно каждое звено
+ */
+function parseService($service,$authorizedAcl='') {
 	global $bw,$inventory;
 
 	if ($service['archived']) return;
@@ -187,16 +197,18 @@ function parseService($service) {
 		if (is_array($col)) {
 			//тут надо сравнивать $col и $newcol
 			$compare=compareCollections($col,$newcol);
-			if (strlen($compare)) {
+			if (count($compare)) {
 				echo "Текущая конфигурация\n";
 				renderCollection($col);
 				echo "\e[1;37;40mИзменения для внесения:\e[0;37;40m\n";
-				echo $compare;
-				if (strpos($compare,"\e[1;33;40mДоступ:\e[0;37;40m ")===false || yn("Вносим изменения? (y/n):")) {
+				renderCompare($compare);
+				if (!isset($compare['acl']) || $compare['acl']==$authorizedAcl || yn("Вносим изменения? (y/n):")) {
 					$newcol=array_merge($col,$newcol);
 					echo "\e[1;37;40mОбновляем коллекцию\e[0;37;40m\n";
 					renderCollection($newcol);
 					$bw->updateCollection($newcol);
+					//запоминаем авторизованное изменение доступа
+					if (isset($compare['acl'])) $authorizedAcl=$compare['acl'];
 				}
 			} else {
 				echo " - нет изменений\n";
@@ -214,7 +226,7 @@ function parseService($service) {
 	}
 	$services=$inventory->getServices();
 	foreach (arrHelper::getItemsByFields($services,['parent_id'=>$service['id']]) as $child) {
-		parseService($child);
+		parseService($child,$authorizedAcl);
 	}
 
 }
