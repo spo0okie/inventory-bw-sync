@@ -189,7 +189,7 @@ class bwApi {
 
     public function updateCollection($col) {
         $cmd='export BW_SESSION='.$this->session.' && '
-            .'echo \''.JSON_ENCODE($col,JSON_UNESCAPED_UNICODE).'\' | '
+            .'echo \''.JSON_ENCODE($col,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE).'\' | '
             .'bw encode | '
             .'bw edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'];
         //echo $cmd."\n";
