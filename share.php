@@ -95,7 +95,7 @@ function parseItem($item) {
 
 	$strings=explode("\n",$notes);
 
-    foreach ($strings as $i=>$string) {
+    foreach ($strings as $string) {
         if (isShareRequest($string)) {
             $path=getShareTokens($string)[0];
             $collection=$bw->findCollection(ORG_ID,['name'=>COL_ROOT.'/'.$path]);
@@ -104,17 +104,13 @@ function parseItem($item) {
                 $item['notes']=str_replace($string,shareString($path,'Коллекция не найдена'),$notes);
             } else {    //такой путь есть
 
-                $newNotes=implode("\n",arrHelper::exclude($strings,$string));   //убираем запрос из комментария
+                $item['notes']=implode("\n",arrHelper::exclude($strings,$string));   //убираем запрос из комментария
 
                 $collectionIds=$item['collectionIds'];
                 if (array_search($collection['id'],$collectionIds)===false) {   //такой коллекции у элемента нет
                     $collectionIds[]=$collection['id'];
                     $item['collectionIds']=$collectionIds; //обновляем коллекции
                 }
-
-                $item=[    //обновляем комментарии
-                    'notes'=>$newNotes
-                ];
             }
 
             $bw->updateItem($item);
