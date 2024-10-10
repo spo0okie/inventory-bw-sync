@@ -60,9 +60,9 @@ function getShareTokens($string) {
     $string=substr($string,TAG_LENGTH); //откусываем токен
 
     $comment='';
-    if ($commentStart=strpos($string,'//')!==false) {
-        $comment=substr($string,$commentStart+2);
-        $string=trim(substr($string,0,$commentStart));
+    if ($commentStart=mb_strpos($string,'//')!==false) {
+        $comment=mb_substr($string,$commentStart+2);
+        $string=trim(mb_substr($string,0,$commentStart));
     }
 
     $path=trim($string);

@@ -205,16 +205,16 @@ class bwApi {
 	    $encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
 	    if (!strlen($encoded)) {
             print_r($item);
-            echo json_last_error_msg();
+            echo json_last_error_msg()."\n";
             return;
         }
         $cmd='export BW_SESSION='.$this->session.' && '
             .'echo \''.$encoded.'\' | '
             .'bw encode | '
             .'bw edit item '.$item['id'];
-        echo $cmd."\n";
+        //echo $cmd."\n";
         exec($cmd);
-        //$this->cache_collections($col['organizationId'],true);
+        $this->cache_items(true);
     }
 
 }
