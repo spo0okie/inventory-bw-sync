@@ -86,6 +86,7 @@ class bwApi {
 
 		$this->init_session();
 
+        exec("bw sync");
 		$data=exec("bw list org-collections --organizationid ".$org_id." --session ".$this->session);
 		if (strlen($data)) {
 			$collections=JSON_DECODE($data,true);
@@ -153,7 +154,7 @@ class bwApi {
         if (isset($this->cache['items']) && !$force) return;
 
         $this->init_session();
-
+        exec("bw sync");
         $data=exec("bw list items --session ".$this->session);
         if (strlen($data)) {
             $items=JSON_DECODE($data,true);
