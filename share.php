@@ -100,7 +100,7 @@ function parseItem($item) {
             $edits=$item;
 
             $path=getShareTokens($string)[0];
-            $collection=$bw->findCollection(ORG_ID,['name'=>$path]);
+            $collection=$bw->findCollection(ORG_ID,['name'=>COL_ROOT.'/'.$path]);
 
             if (!is_array($collection)) {  //нет такого пути
                 $edits['notes']=str_replace($string,shareString($path,'Коллекция не найдена'),$notes);
