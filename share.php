@@ -97,13 +97,11 @@ function parseItem($item) {
 
     foreach ($strings as $i=>$string) {
         if (isShareRequest($string)) {
-            $edits=$item;
-
             $path=getShareTokens($string)[0];
             $collection=$bw->findCollection(ORG_ID,['name'=>COL_ROOT.'/'.$path]);
 
             if (!is_array($collection)) {  //нет такого пути
-                $edits['notes']=str_replace($string,shareString($path,'Коллекция не найдена'),$notes);
+                $item['notes']=str_replace($string,shareString($path,'Коллекция не найдена'),$notes);
             } else {    //такой путь есть
 
                 $newNotes=implode("\n",arrHelper::exclude($strings,$string));   //убираем запрос из комментария
@@ -111,15 +109,15 @@ function parseItem($item) {
                 $collectionIds=$item['collectionIds'];
                 if (array_search($collection['id'],$collectionIds)===false) {   //такой коллекции у элемента нет
                     $collectionIds[]=$collection['id'];
-                    $edits['collectionIds']=$collectionIds; //обновляем коллекции
+                    $item['collectionIds']=$collectionIds; //обновляем коллекции
                 }
 
-                $edits=[    //обновляем комментарии
+                $item=[    //обновляем комментарии
                     'notes'=>$newNotes
                 ];
             }
 
-            $bw->updateItem($edits);
+            $bw->updateItem($item);
         }
     }
 }
