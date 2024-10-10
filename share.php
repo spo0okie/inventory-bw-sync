@@ -101,7 +101,10 @@ function parseItem($item) {
             $collection=$bw->findCollection(ORG_ID,['name'=>COL_ROOT.'/'.$path]);
 
             if (!is_array($collection)) {  //нет такого пути
-                $item['notes']=str_replace($string,shareString($path,'Коллекция не найдена'),$notes);
+                $item['notes']=mb_convert_encoding(//без этого json_encode бросает Malformed UTF-8 characters, possibly incorrectly encoded
+                    str_replace($string,shareString($path,'Коллекция не найдена'),$notes),
+                    'UTF-8', 'UTF-8'
+                );
             } else {    //такой путь есть
 
                 $item['notes']=implode("\n",arrHelper::exclude($strings,$string));   //убираем запрос из комментария
