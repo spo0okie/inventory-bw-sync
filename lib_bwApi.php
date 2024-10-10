@@ -216,6 +216,7 @@ class bwApi {
             .'bw encode | '
             .'bw edit item '.$item['id'];
         //echo $cmd."\n";
+        exec("bw sync");
         exec($cmd);
         $this->cache_items(true);
     }
