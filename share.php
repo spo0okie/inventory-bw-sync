@@ -1,7 +1,7 @@
 #!/usr/bin/php
 <?php
 /*
-v1.4    + возможность расшарить пароль в коллекцию к которой нет доступа
+v1.4	+ возможность расшарить пароль в коллекцию к которой нет доступа
 */
 
 /**
@@ -16,16 +16,15 @@ v1.4    + возможность расшарить пароль в коллек
 /*
 Задача скрипта:
   * Найти элементы у которых в поле notes есть строки вида:
-      #share:<collection path>
+	  #share:<collection path>
   * Добавить этот элемент в коллекции с таким путем
   * Удалить соотв строки в случае успеха
   * Добавить комментарий в случае неудачи
-      #share:<collection path> //Коллекция не найдена
+	  #share:<collection path> //Коллекция не найдена
 */
 
 const SHARE_TAG='#share:';
 const TAG_LENGTH=7;
-
 
 include dirname(__FILE__).'/config.priv.php';
 //require_once dirname(__FILE__).'/lib_inventoryApi.php';
@@ -47,27 +46,27 @@ function verboseMsg($msg) {
  * @return bool
  */
 function isShareRequest($string) {
-    return substr($string,0,TAG_LENGTH)===SHARE_TAG;
+	return substr($string,0,TAG_LENGTH)===SHARE_TAG;
 }
 
 /**
  * Возвращает токены стороки
- *       #share:<collection path> //Коллекция не найдена -> ['collection path','Коллекция не найдена'];
+ *	   #share:<collection path> //Коллекция не найдена -> ['collection path','Коллекция не найдена'];
  * @param $string
  * @return array
  */
 function getShareTokens($string) {
-    $string=substr($string,TAG_LENGTH); //откусываем токен
+	$string=substr($string,TAG_LENGTH); //откусываем токен
 
-    $comment='';
-    if ($commentStart=mb_strpos($string,'//')!==false) {
-        $comment=mb_substr($string,$commentStart+2);
-        $string=trim(mb_substr($string,0,$commentStart));
-    }
+	$comment='';
+	if ($commentStart=mb_strpos($string,'//')!==false) {
+		$comment=mb_substr($string,$commentStart+2);
+		$string=trim(mb_substr($string,0,$commentStart));
+	}
 
-    $path=trim($string);
+	$path=trim($string);
 
-    return [$path,$comment];
+	return [$path,$comment];
 }
 
 
@@ -78,10 +77,10 @@ function getShareTokens($string) {
  * @return string
  */
 function shareString($path,$comment='') {
-    $string=SHARE_TAG.$path;
-    if (strlen($comment))
-        $string.=' //'.$comment;
-    return $string;
+	$string=SHARE_TAG.$path;
+	if (strlen($comment))
+		$string.=' //'.$comment;
+	return $string;
 }
 
 /**
@@ -95,30 +94,43 @@ function parseItem($item) {
 
 	$strings=explode("\n",$notes);
 
-    foreach ($strings as $string) {
-        if (isShareRequest($string)) {
-            $path=getShareTokens($string)[0];
-            $collection=$bw->findCollection(ORG_ID,['name'=>COL_ROOT.'/'.$path]);
+	$needUpdate=false;
+	$needShare=false;
 
-            if (!is_array($collection)) {  //нет такого пути
-                $item['notes']=mb_convert_encoding(//без этого json_encode бросает Malformed UTF-8 characters, possibly incorrectly encoded
-                    str_replace($string,shareString($path,'Коллекция не найдена'),$notes),
-                    'UTF-8', 'UTF-8'
-                );
-            } else {    //такой путь есть
+	foreach ($strings as $i=>$string) {
+		if (isShareRequest($string)) {
+			$path=getShareTokens($string)[0];
+			$collection=$bw->findCollection(ORG_ID,['name'=>COL_ROOT.'/'.$path]);
 
-                $item['notes']=implode("\n",arrHelper::exclude($strings,$string));   //убираем запрос из комментария
+			if (!is_array($collection)) {  //нет такого пути
+				$strings[$i]=shareString($path,'Коллекция не найдена');
+				$needUpdate=true;
+			} else {	//такой путь есть
 
-                $collectionIds=$item['collectionIds'];
-                if (array_search($collection['id'],$collectionIds)===false) {   //такой коллекции у элемента нет
-                    $collectionIds[]=$collection['id'];
-                    $item['collectionIds']=$collectionIds; //обновляем коллекции
-                }
-            }
+				unset($strings[$i]);
+				$needUpdate=true;
 
-            $bw->updateItem($item);
-        }
-    }
+				$collectionIds=$item['collectionIds'];
+				if (array_search($collection['id'],$collectionIds)===false) {   //такой коллекции у элемента нет
+					$collectionIds[]=$collection['id'];
+					$item['collectionIds']=$collectionIds; //обновляем коллекции
+					$needShare=true;
+				}
+			}
+
+		}
+	}
+
+	if ($needUpdate || $needShare) {
+		$item['notes']=implode("\n",$strings);
+	}
+
+	if ($needShare) {
+		if (strlen($bw->createItem($item)))	//новый будет создан с другим ИД
+			$bw->deleteItem($item);			//удален будет с текущим ИД
+	} elseif ($needUpdate) {
+		$bw->updateItem($item);
+	}
 }
 
 /*echo "Initializin Inventory API ... ";

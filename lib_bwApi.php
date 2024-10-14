@@ -11,11 +11,69 @@ class bwApi {
 	public $passwordWeb;
 	public $passwordCli;
 
+	public $cliError;
+	public $cliExitCode;
+
 	public function __construct($url,$login,$passWeb,$passCli) {
 		$this->baseUrl=$url;
 		$this->login=$login;
 		$this->passwordWeb=$passWeb;
 		$this->passwordCli=$passCli;
+	}
+
+	//выполняет команду 
+	public function cliExec($cmd,$input='') {
+		//дескрипторы
+		$desc=[
+			0 => ['pipe','r'],	//STDIN
+			1 => ['pipe','w'],	//STDOUT
+			2 => ['pipe','w'],	//STDERR
+		];
+
+		//переменные окружения
+		$variables=array_merge($_SERVER,[
+			'NODE_EXTRA_CA_CERTS'=>'/etc/ssl/certs/ca-certificates.crt',
+			'NODE_TLS_REJECT_UNAUTHORIZED'=>0,
+		]);
+		if ($this->session) $variables['BW_SESSION']=$this->session;
+
+		unset($variables['argv']);
+
+		//процесс
+		$proc=proc_open(
+			$cmd,		//command
+			$desc,		//descriptors
+			$pipes,		//pipes
+			null,		//cwd
+			$variables	//env_vars
+		);
+
+		if (is_resource($proc)) {
+			if ($input) fwrite($pipes[0],$input);
+			fclose($pipes[0]);
+
+			$output=stream_get_contents($pipes[1]);
+			fclose($pipes[1]);
+
+			$this->cliError=stream_get_contents($pipes[2]);
+			fclose($pipes[2]);
+
+			$this->cliExitCode=proc_close($proc);
+
+			return $output;
+		}
+
+		return false;
+	}
+
+	//показать результат выполнения команды выше
+	public function cliShowError() {
+		echo "({$this->cliExitCode}): {$this->cliError}\n";
+	}
+
+	//показать результат если есть ошибки
+	public function cliShowIfError() {
+		if ($this->cliExitCode) $this->cliShowError();
 	}
 
 	public function init_session() {
@@ -52,13 +110,17 @@ class bwApi {
 		$this->token=$json['access_token'];
 		curl_close($ch);
 
-		$data=exec(
+
+		$this->cliExec('bw logout --quiet');
+		$this->cliExec("bw config server {$this->baseUrl} --quiet");
+		$data=$this->cliExec("bw login {$this->login} {$this->passwordCli} --raw");
+		/*$data=exec(
 			"NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt && "
 			."NODE_TLS_REJECT_UNAUTHORIZED=0 && "
 			."bw logout --quiet && "
 			."bw config server {$this->baseUrl} --quiet && "
 			."bw login {$this->login} {$this->passwordCli} --raw"
-		);
+		);*/
 		if (!strlen($data)) {
 			echo "ERROR AUTHENTICATING VW CLI\n";
 			exit;
@@ -66,7 +128,7 @@ class bwApi {
 
 		$this->session=$data;
 
-        exec("bw sync");
+		exec("bw sync");
 	}
 
 	public function getReq($path) {
@@ -86,7 +148,7 @@ class bwApi {
 
 		$this->init_session();
 
-        exec("bw sync");
+		exec("bw sync");
 		$data=exec("bw list org-collections --organizationid ".$org_id." --session ".$this->session);
 		if (strlen($data)) {
 			$collections=JSON_DECODE($data,true);
@@ -112,57 +174,58 @@ class bwApi {
 
 	/*
 	 {
-    "continuationToken": null,
-    "data": [
-        {
-            "accessAll": true,
-            "collections": [],
-            "email": "user@domain.tld",
-            "externalId": null,
-            "groups": [],
-            "id": "11111111-2222-3333-4444-555555555555",
-            "name": "somename",
-            "object": "organizationUserUserDetails",
-            "resetPasswordEnrolled": false,
-            "status": 2,
-            "twoFactorEnabled": false,
-            "type": 0,
-            "userId": "11111111-2222-3333-4444-555555555555" //не то же самое что ID
-        },
+	"continuationToken": null,
+	"data": [
+		{
+			"accessAll": true,
+			"collections": [],
+			"email": "user@domain.tld",
+			"externalId": null,
+			"groups": [],
+			"id": "11111111-2222-3333-4444-555555555555",
+			"name": "somename",
+			"object": "organizationUserUserDetails",
+			"resetPasswordEnrolled": false,
+			"status": 2,
+			"twoFactorEnabled": false,
+			"type": 0,
+			"userId": "11111111-2222-3333-4444-555555555555" //не то же самое что ID
+		},
 	]}
 	 */
 	public function cache_users($org_id, $force=false) {
 		if (isset($this->cache['users']) && !$force) return;
 		$this->init_session();
-        $data=$this->getReq('/api/organizations/'.$org_id.'/users');
-        if (strlen($data) && is_array($json=JSON_DECODE($data,true)) && isset($json['data'])) {
-            $this->cache['users']=[];
-            foreach($json['data'] as $user ) {
-                $this->cache['users'][$user['id']]=$user;
-            }
-            //print_r($collections['data']);
-            //exit;
-            //$this->cache['collections']=JSON_DECODE($data,true);
-        } else {
-            echo "Error loading WEB-API users\n";
-            exit;
-        }
+		$data=$this->getReq('/api/organizations/'.$org_id.'/users');
+		if (strlen($data) && is_array($json=JSON_DECODE($data,true)) && isset($json['data'])) {
+			$this->cache['users']=[];
+			foreach($json['data'] as $user ) {
+				$this->cache['users'][$user['id']]=$user;
+			}
+			//print_r($collections['data']);
+			//exit;
+			//$this->cache['collections']=JSON_DECODE($data,true);
+		} else {
+			echo "Error loading WEB-API users\n";
+			exit;
+		}
 
 		//print_r($this->cache);
 	}
-    public function cache_items($force=false) {
-        if (isset($this->cache['items']) && !$force) return;
 
-        $this->init_session();
-        exec("bw sync");
-        $data=exec("bw list items --session ".$this->session);
-        if (strlen($data)) {
-            $items=JSON_DECODE($data,true);
-            $this->cache['items']=$items;
-        } else {
-            echo "Error loading CLI items\n";
-            exit;
-        }
+	public function cache_items($force=false) {
+		if (isset($this->cache['items']) && !$force) return;
+
+		$this->init_session();
+		exec("bw sync");
+		$data=exec("bw list items --session ".$this->session);
+		if (strlen($data)) {
+			$items=JSON_DECODE($data,true);
+			$this->cache['items']=$items;
+		} else {
+			echo "Error loading CLI items\n";
+			exit;
+		}
 	}
 
 	public function findCollection($org_id,$filter) {
@@ -190,35 +253,72 @@ class bwApi {
 		//$this->cache_collections($col['organizationId'],true);
 	}
 
-    public function updateCollection($col) {
-        $cmd='export BW_SESSION='.$this->session.' && '
-            .'echo \''.JSON_ENCODE($col,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE).'\' | '
-            .'bw encode | '
-            .'bw edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'];
-        //echo $cmd."\n";
-        exec($cmd);
-        //$this->cache_collections($col['organizationId'],true);
-    }
+	public function updateCollection($col) {
+		$cmd='export BW_SESSION='.$this->session.' && '
+			.'echo \''.JSON_ENCODE($col,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE).'\' | '
+			.'bw encode | '
+			.'bw edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'];
+		//echo $cmd."\n";
+		exec($cmd);
+		//$this->cache_collections($col['organizationId'],true);
+	}
 
-    public function updateItem($item) {
-	    if (!isset($item['id'])) {
-	        print_r($item);
-	        return;
-        }
-	    $encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
-	    if (!strlen($encoded)) {
-            print_r($item);
-            echo json_last_error_msg()."\n";
-            return;
-        }
-        $cmd='export BW_SESSION='.$this->session.' && '
-            .'echo \''.$encoded.'\' | '
-            .'bw encode | '
-            .'bw edit item '.$item['id'];
-        //echo $cmd."\n";
-        exec("bw sync");
-        exec($cmd);
-        $this->cache_items(true);
-    }
+	public function updateItem($item) {
+
+		$encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
+		if (!strlen($encoded)) {
+			print_r($item);
+			echo json_last_error_msg()."\n";
+			return;
+		}
+
+		$cmd='export BW_SESSION='.$this->session.' && '
+			.'echo \''.$encoded.'\' | '
+			.'bw encode | '
+			.'bw edit item '.$item['id'];
+		//echo $cmd."\n";
+		//exec("bw sync");
+		exec($cmd);
+		//$this->cache_items(true);
+	}
+
+	public function createItem($item) {
+		if (isset($item['id'])) {
+			unset($item['id']);
+		}
+
+		$encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
+		if (!strlen($encoded)) {
+			print_r($item);
+			echo json_last_error_msg()."\n";
+			return;
+		}
+
+		$bwEncoded=$this->cliExec('bw encode',$encoded);
+		$this->cliShowIfError();
+		//echo "$bwEncoded\n";
+
+		$data=$this->cliExec('bw create item',$bwEncoded);
+		$this->cliShowIfError();
+		if (strlen($data)) {
+			$json=JSON_DECODE($data,true);
+			return $json['id']??'';
+		} else {
+			echo "Error creating item (CLI interface)\n";
+			return '';
+		}
+		//$this->cache_items(true);
+	}
+
+	public function deleteItem($item) {
+		if (!isset($item['id'])) {
+			echo "Cant delete item without ID set\n";
+			return;
+		}
+		$this->cliExec("bw delete item {$item['id']}");
+		//$this->cache_items(true);
+	}
+
+
 
 }
