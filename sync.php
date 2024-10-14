@@ -49,26 +49,12 @@ ord-collection template:
 }
 
 */
-//$inventoryCache=[];
-#require_once __DIR__ . '/vendor/autoload.php';
 
 include dirname(__FILE__).'/config.priv.php';
 require_once dirname(__FILE__).'/lib_inventoryApi.php';
 require_once dirname(__FILE__).'/lib_bwApi.php';
 require_once dirname(__FILE__).'/lib_arrHelper.php';
 
-#require_once __DIR__ . '/vendor/autoload.php';
-#require_once __DIR__ . '/vendor/bitwarden/sdk/src/schemas/ClientSettings.php';
-#print_r(get_declared_classes());
-
-$dryRun=!(array_search('real',$argv)!==false);
-$verbose=(array_search('verbose',$argv)!==false);
-
-function verboseMsg($msg) {
-	global $verbose;
-	if (!$verbose) return;
-	echo $msg;
-}
 
 function addTeammate(&$team,$mate) {
 	if (!is_array($mate)) return;
@@ -199,21 +185,21 @@ function parseService($service,$authorizedAcl='') {
 
 	echo $service['name']."\n";
 	$col = $bw->findCollection(ORG_ID,['externalId'=>'inventory#'.$service['id']]);
-	$newcol=colParams($service);
-	if (is_array($newcol)) {
+	$newCol=colParams($service);
+	if (is_array($newCol)) {
 		if (is_array($col)) {
-			//тут надо сравнивать $col и $newcol
-			$compare=compareCollections($col,$newcol);
+			//тут надо сравнивать $col и $newCol
+			$compare=compareCollections($col,$newCol);
 			if (count($compare)) {
 				echo "Текущая конфигурация\n";
 				renderCollection($col);
 				echo "\e[1;37;40mИзменения для внесения:\e[0;37;40m\n";
 				renderCompare($compare);
 				if (!isset($compare['acl']) || $compare['acl']==$authorizedAcl || yn("Вносим изменения? (y/n):")) {
-					$newcol=array_merge($col,$newcol);
+					$newCol=array_merge($col,$newCol);
 					echo "\e[1;37;40mОбновляем коллекцию\e[0;37;40m\n";
-					renderCollection($newcol);
-					$bw->updateCollection($newcol);
+					renderCollection($newCol);
+					$bw->updateCollection($newCol);
 					//запоминаем авторизованное изменение доступа
 					if (isset($compare['acl'])) $authorizedAcl=$compare['acl'];
 				}
@@ -221,14 +207,9 @@ function parseService($service,$authorizedAcl='') {
 				echo " - нет изменений\n";
 			}
 		} else {
-			if (is_array($newcol)) {
-				//print_r($newcol);
-				echo "\e[1;37;40mСоздаем коллекцию\e[0;37;40m\n";
-				renderCollection($newcol);
-				$bw->createCollection($newcol);
-			} else {
-				return;
-			}
+            echo "\e[1;37;40mСоздаем коллекцию\e[0;37;40m\n";
+            renderCollection($newCol);
+            $bw->createCollection($newCol);
 		}
 	}
 	$services=$inventory->getServices();

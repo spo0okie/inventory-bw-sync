@@ -1,7 +1,9 @@
 #!/usr/bin/php
 <?php
 /*
-v1.4	+ возможность расшарить пароль в коллекцию к которой нет доступа
+ * v1.5 ! исправлена проблема экранирования символов при передаче данных в bw cli через stdinput
+ *      ! при пересоздании
+ * v1.4	+ возможность расшарить пароль в коллекцию к которой нет доступа
 */
 
 /**
@@ -31,15 +33,6 @@ include dirname(__FILE__).'/config.priv.php';
 require_once dirname(__FILE__).'/lib_bwApi.php';
 require_once dirname(__FILE__).'/lib_arrHelper.php';
 
-$dryRun=!(array_search('real',$argv)!==false);
-$verbose=(array_search('verbose',$argv)!==false);
-
-function verboseMsg($msg) {
-	global $verbose;
-	if (!$verbose) return;
-	echo $msg;
-}
-
 /**
  * Признак того что строка - запрос на добавление элемента в коллекцию
  * @param $string
@@ -50,7 +43,7 @@ function isShareRequest($string) {
 }
 
 /**
- * Возвращает токены стороки
+ * Возвращает токены строки
  *	   #share:<collection path> //Коллекция не найдена -> ['collection path','Коллекция не найдена'];
  * @param $string
  * @return array
