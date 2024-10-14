@@ -217,8 +217,7 @@ class bwApi {
 		if (isset($this->cache['items']) && !$force) return;
 
 		$this->init_session();
-		exec("bw sync");
-		$data=exec("bw list items --session ".$this->session);
+		$data=$this->cliExec("bw list items");
 		if (strlen($data)) {
 			$items=JSON_DECODE($data,true);
 			$this->cache['items']=$items;
@@ -244,42 +243,30 @@ class bwApi {
 	}
 
 	public function createCollection($col) {
-		$cmd='export BW_SESSION='.$this->session.' && '
-			.'echo \''.JSON_ENCODE($col,JSON_UNESCAPED_UNICODE).'\' | '
-			.'bw encode | '
-			.'bw create org-collection --organizationid '.$col['organizationId'];
-		//echo $cmd."\n";
-		exec($cmd);
+	    $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
+	    $bwEncoded=$this->cliExec('bw encode',$jsonEncoded);
+        $this->cliExec('bw create org-collection --organizationid '.$col['organizationId'],$bwEncoded);
 		//$this->cache_collections($col['organizationId'],true);
 	}
 
 	public function updateCollection($col) {
-		$cmd='export BW_SESSION='.$this->session.' && '
-			.'echo \''.JSON_ENCODE($col,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE).'\' | '
-			.'bw encode | '
-			.'bw edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'];
-		//echo $cmd."\n";
-		exec($cmd);
-		//$this->cache_collections($col['organizationId'],true);
+        $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
+        $bwEncoded=$this->cliExec('bw encode',$jsonEncoded);
+        $this->cliExec('bw edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'],$bwEncoded);
+        //$this->cache_collections($col['organizationId'],true);
 	}
 
 	public function updateItem($item) {
 
-		$encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
-		if (!strlen($encoded)) {
+        $jsonEncoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
+		if (!strlen($jsonEncoded)) {
 			print_r($item);
 			echo json_last_error_msg()."\n";
 			return;
 		}
 
-		$cmd='export BW_SESSION='.$this->session.' && '
-			.'echo \''.$encoded.'\' | '
-			.'bw encode | '
-			.'bw edit item '.$item['id'];
-		//echo $cmd."\n";
-		//exec("bw sync");
-		exec($cmd);
-		//$this->cache_items(true);
+        $bwEncoded=$this->cliExec('bw encode',$jsonEncoded);
+        $this->cliExec('bw edit item '.$item['id'],$bwEncoded);
 	}
 
 	public function createItem($item) {
@@ -291,7 +278,7 @@ class bwApi {
 		if (!strlen($encoded)) {
 			print_r($item);
 			echo json_last_error_msg()."\n";
-			return;
+			return '';
 		}
 
 		$bwEncoded=$this->cliExec('bw encode',$encoded);
@@ -318,7 +305,5 @@ class bwApi {
 		$this->cliExec("bw delete item {$item['id']}");
 		//$this->cache_items(true);
 	}
-
-
 
 }
