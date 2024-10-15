@@ -11,6 +11,7 @@ class bwApi {
 	public $passwordWeb;
 	public $passwordCli;
 
+	public $cliPath='/usr/local/bin/bw';
 	public $cliError;
 	public $cliExitCode;
 
@@ -60,6 +61,7 @@ class bwApi {
 
 			$this->cliExitCode=proc_close($proc);
 
+			$this->cliShowIfError();
 			return $output;
 		}
 
@@ -111,24 +113,15 @@ class bwApi {
 		curl_close($ch);
 
 
-		$this->cliExec('bw logout --quiet');
-		$this->cliExec("bw config server {$this->baseUrl} --quiet");
-		$data=$this->cliExec("bw login {$this->login} {$this->passwordCli} --raw");
-		/*$data=exec(
-			"NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt && "
-			."NODE_TLS_REJECT_UNAUTHORIZED=0 && "
-			."bw logout --quiet && "
-			."bw config server {$this->baseUrl} --quiet && "
-			."bw login {$this->login} {$this->passwordCli} --raw"
-		);*/
+		$this->cliExec($this->cliPath.' logout --quiet');
+		$this->cliExec($this->cliPath." config server {$this->baseUrl} --quiet");
+		$data=$this->cliExec($this->cliPath." login {$this->login} {$this->passwordCli} --raw");
 		if (!strlen($data)) {
 			echo "ERROR AUTHENTICATING VW CLI\n";
 			exit;
 		}
 
 		$this->session=$data;
-
-		exec("bw sync");
 	}
 
 	public function getReq($path) {
@@ -148,8 +141,7 @@ class bwApi {
 
 		$this->init_session();
 
-		exec("bw sync");
-		$data=exec("bw list org-collections --organizationid ".$org_id." --session ".$this->session);
+		$data=$this->cliExec($this->cliPath." list org-collections --organizationid ".$org_id);
 		if (strlen($data)) {
 			$collections=JSON_DECODE($data,true);
 			$this->cache['collections']=$collections;
@@ -217,7 +209,7 @@ class bwApi {
 		if (isset($this->cache['items']) && !$force) return;
 
 		$this->init_session();
-		$data=$this->cliExec("bw list items");
+		$data=$this->cliExec($this->cliPath." list items");
 		if (strlen($data)) {
 			$items=JSON_DECODE($data,true);
 			$this->cache['items']=$items;
@@ -244,15 +236,15 @@ class bwApi {
 
 	public function createCollection($col) {
 	    $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
-	    $bwEncoded=$this->cliExec('bw encode',$jsonEncoded);
-        $this->cliExec('bw create org-collection --organizationid '.$col['organizationId'],$bwEncoded);
+	    $bwEncoded=$this->cliExec($this->cliPath.' encode',$jsonEncoded);
+        $this->cliExec($this->cliPath.' create org-collection --organizationid '.$col['organizationId'],$bwEncoded);
 		//$this->cache_collections($col['organizationId'],true);
 	}
 
 	public function updateCollection($col) {
         $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
-        $bwEncoded=$this->cliExec('bw encode',$jsonEncoded);
-        $this->cliExec('bw edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'],$bwEncoded);
+        $bwEncoded=$this->cliExec($this->cliPath.' encode',$jsonEncoded);
+        $this->cliExec($this->cliPath.' edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'],$bwEncoded);
         //$this->cache_collections($col['organizationId'],true);
 	}
 
@@ -265,8 +257,8 @@ class bwApi {
 			return;
 		}
 
-        $bwEncoded=$this->cliExec('bw encode',$jsonEncoded);
-        $this->cliExec('bw edit item '.$item['id'],$bwEncoded);
+        $bwEncoded=$this->cliExec($this->cliPath.' encode',$jsonEncoded);
+        $this->cliExec($this->cliPath.' edit item '.$item['id'],$bwEncoded);
 	}
 
 	public function createItem($item) {
@@ -281,12 +273,10 @@ class bwApi {
 			return '';
 		}
 
-		$bwEncoded=$this->cliExec('bw encode',$encoded);
-		$this->cliShowIfError();
+		$bwEncoded=$this->cliExec($this->cliPath.' encode',$encoded);
 		//echo "$bwEncoded\n";
 
-		$data=$this->cliExec('bw create item',$bwEncoded);
-		$this->cliShowIfError();
+		$data=$this->cliExec($this->cliPath.' create item',$bwEncoded);
 		if (strlen($data)) {
 			$json=JSON_DECODE($data,true);
 			return $json['id']??'';
@@ -302,7 +292,7 @@ class bwApi {
 			echo "Cant delete item without ID set\n";
 			return;
 		}
-		$this->cliExec("bw delete item {$item['id']}");
+		$this->cliExec($this->cliPath." delete item {$item['id']}");
 		//$this->cache_items(true);
 	}
 
