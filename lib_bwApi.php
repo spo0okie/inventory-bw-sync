@@ -78,6 +78,29 @@ class bwApi {
 		if ($this->cliExitCode) $this->cliShowError();
 	}
 
+	//выполнить команду в CLI
+	public function cliCmd($cmd,$input='') {
+		return $this->cliExec($this->cliPath.' '.$cmd,$input);
+	}
+
+	//получить структуру из выполнения команды
+	public function cliGetJson($cmd,$input='') {
+		$data=$this->cliCmd($cmd,$input);
+
+		if (!strlen($data)) {
+			echo "CLI ERROR: No data returned on CMD [$cmd]\n";
+			exit (2);
+		}
+
+		$json=JSON_DECODE($data,true);
+		if (!is_array($json)) {
+			echo "CLI ERROR parsing data:$data\n";
+			exit (3);
+		}
+
+		return $json;
+	}
+
 	public function init_session() {
 		if (!is_null($this->session)&&!is_null($this->token)) return;
 		$form=[
@@ -107,21 +130,39 @@ class bwApi {
 			var_dump(curl_getinfo($ch));
 			var_dump($json);
 			var_dump($ch);
-			*/
+			exit;
+			/**/
 		}
 		$this->token=$json['access_token'];
 		curl_close($ch);
 
-
-		$this->cliExec($this->cliPath.' logout --quiet');
-		$this->cliExec($this->cliPath." config server {$this->baseUrl} --quiet");
-		$data=$this->cliExec($this->cliPath." login {$this->login} {$this->passwordCli} --raw");
+		$status=$this->cliGetJson('status');
+		if ($this->baseUrl !== $status['serverUrl']) {
+			echo "configuring ... ";
+			$this->cliCmd('logout --quiet');
+			$this->cliCmd("config server {$this->baseUrl} --quiet");
+			$status=$this->cliGetJson('status');
+		}
+		switch ($status['status']??'ERROR') {
+			case 'unauthenticated':
+				echo "logging in ... ";
+				$data=$this->cliCmd("login {$this->login} {$this->passwordCli} --raw");
+				break;
+			case 'locked':
+				echo "unlocking ... ";
+				$data=$this->cliCmd("unlock --raw",$this->passwordCli);
+				break;
+			default:
+				echo "CLI ERROR: Unknown login status [{$status['status']}]\n";
+				exit (4);
+		}
 		if (!strlen($data)) {
 			echo "ERROR AUTHENTICATING VW CLI\n";
 			exit;
 		}
 
 		$this->session=$data;
+		$this->cliCmd('sync');
 	}
 
 	public function getReq($path) {
@@ -141,14 +182,8 @@ class bwApi {
 
 		$this->init_session();
 
-		$data=$this->cliExec($this->cliPath." list org-collections --organizationid ".$org_id);
-		if (strlen($data)) {
-			$collections=JSON_DECODE($data,true);
-			$this->cache['collections']=$collections;
-		} else {
-			echo "Error loading CLI collections\n";
-			exit;
-		}
+		$collections=$this->cliGetJson("list org-collections --organizationid ".$org_id);
+		$this->cache['collections']=$collections;
 
 		$data=$this->getReq('/api/organizations/'.$org_id.'/collections/details');
 		if (strlen($data) && is_array($collections=JSON_DECODE($data,true)) && isset($collections['data'])) {
@@ -209,14 +244,9 @@ class bwApi {
 		if (isset($this->cache['items']) && !$force) return;
 
 		$this->init_session();
-		$data=$this->cliExec($this->cliPath." list items");
-		if (strlen($data)) {
-			$items=JSON_DECODE($data,true);
-			$this->cache['items']=$items;
-		} else {
-			echo "Error loading CLI items\n";
-			exit;
-		}
+		$this->cliCmd('sync');
+		$items=$this->cliGetJson("list items");
+		$this->cache['items']=$items;
 	}
 
 	public function findCollection($org_id,$filter) {
@@ -243,13 +273,15 @@ class bwApi {
 
 	public function updateCollection($col) {
         $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
+		//echo $jsonEncoded."\n";
         $bwEncoded=$this->cliExec($this->cliPath.' encode',$jsonEncoded);
         $this->cliExec($this->cliPath.' edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'],$bwEncoded);
         //$this->cache_collections($col['organizationId'],true);
 	}
 
-	public function updateItem($item) {
 
+
+	public function updateItem($item) {
         $jsonEncoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
 		if (!strlen($jsonEncoded)) {
 			print_r($item);
