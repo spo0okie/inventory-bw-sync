@@ -12,6 +12,7 @@ class bwApi {
 	public $passwordCli;
 
 	public $cliPath='/usr/local/bin/bw';
+	public $showTimings=true;	//печатать длительность каждого вызова CLI
 	public $cliError;
 	public $cliExitCode;
 
@@ -24,6 +25,7 @@ class bwApi {
 
 	//выполняет команду 
 	public function cliExec($cmd,$input='') {
+		$t0=microtime(true);
 		//дескрипторы
 		$desc=[
 			0 => ['pipe','r'],	//STDIN
@@ -60,6 +62,12 @@ class bwApi {
 			fclose($pipes[2]);
 
 			$this->cliExitCode=proc_close($proc);
+
+			if ($this->showTimings) {
+				//аргументы не светим (в login передается пароль) - печатаем только имя команды
+				$word=strtok(trim(substr($cmd,strlen($this->cliPath))),' ');
+				printf("\t[bw %s: %.1fs]\n",$word,microtime(true)-$t0);
+			}
 
 			$this->cliShowIfError();
 			return $output;
@@ -244,7 +252,7 @@ class bwApi {
 		if (isset($this->cache['items']) && !$force) return;
 
 		$this->init_session();
-		$this->cliCmd('sync');
+		//sync уже сделан в init_session, второй раз не нужен
 		$items=$this->cliGetJson("list items");
 		$this->cache['items']=$items;
 	}
@@ -266,7 +274,7 @@ class bwApi {
 
 	public function createCollection($col) {
 	    $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
-	    $bwEncoded=$this->cliExec($this->cliPath.' encode',$jsonEncoded);
+	    $bwEncoded=base64_encode($jsonEncoded);	//bw encode = base64, делаем сами не дергая CLI
         $this->cliExec($this->cliPath.' create org-collection --organizationid '.$col['organizationId'],$bwEncoded);
 		//$this->cache_collections($col['organizationId'],true);
 	}
@@ -274,7 +282,7 @@ class bwApi {
 	public function updateCollection($col) {
         $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
 		//echo $jsonEncoded."\n";
-        $bwEncoded=$this->cliExec($this->cliPath.' encode',$jsonEncoded);
+        $bwEncoded=base64_encode($jsonEncoded);	//bw encode = base64, делаем сами не дергая CLI
         $this->cliExec($this->cliPath.' edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'],$bwEncoded);
         //$this->cache_collections($col['organizationId'],true);
 	}
@@ -282,14 +290,14 @@ class bwApi {
 
 
 	public function updateItem($item) {
-        $jsonEncoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
+        $jsonEncoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE);
 		if (!strlen($jsonEncoded)) {
 			print_r($item);
 			echo json_last_error_msg()."\n";
 			return;
 		}
 
-        $bwEncoded=$this->cliExec($this->cliPath.' encode',$jsonEncoded);
+        $bwEncoded=base64_encode($jsonEncoded);	//bw encode = base64, делаем сами не дергая CLI
         $this->cliExec($this->cliPath.' edit item '.$item['id'],$bwEncoded);
 	}
 
@@ -298,14 +306,14 @@ class bwApi {
 			unset($item['id']);
 		}
 
-		$encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE && JSON_INVALID_UTF8_IGNORE);
+		$encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE);
 		if (!strlen($encoded)) {
 			print_r($item);
 			echo json_last_error_msg()."\n";
 			return '';
 		}
 
-		$bwEncoded=$this->cliExec($this->cliPath.' encode',$encoded);
+		$bwEncoded=base64_encode($encoded);	//bw encode = base64, делаем сами не дергая CLI
 		//echo "$bwEncoded\n";
 
 		$data=$this->cliExec($this->cliPath.' create item',$bwEncoded);
