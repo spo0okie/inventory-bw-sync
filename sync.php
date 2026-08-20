@@ -6,6 +6,8 @@ v1.1    + рабочая схема синхронизации коллекци�
 v1.2    ! bug fixes
 v1.3    + учет наличия суперпользователей
 v1.6    ! ускорение: base64 вместо bw encode, тайминги вызовов CLI, исправлены флаги JSON_ENCODE
+v1.7    ! новые VW (Flexible Collections) отдают админов в ACL коллекций явно вместо accessAll -
+          определяем их по роли (type), из сравнения ACL исключаем, при обновлении не затираем
 */
 
 /**
@@ -79,6 +81,18 @@ function serviceTeam($service) {
 	return $team;
 }
 
+/**
+ * Пользователь - владелец/админ организации: доступ ко всем коллекциям у него и так есть.
+ * Старые VW помечали таких флагом accessAll, новые (Flexible Collections) флаг убрали
+ * и отдают админов явными записями в ACL каждой коллекции - поэтому дополнительно
+ * проверяем роль (type: 0=owner, 1=admin). В синхронизации ACL таких не учитываем.
+ */
+function isOrgAdmin($user) {
+	if (!is_array($user)) return false;
+	if (!empty($user['accessAll'])) return true;	//старые версии VW
+	return ($user['type']??2)<=1;					//0=owner, 1=admin
+}
+
 function inventoryTeam2Bw($team) {
 	global $bw;
 	$users=[];
@@ -87,7 +101,7 @@ function inventoryTeam2Bw($team) {
 		$user=$bw->findUser(ORG_ID,['email'=>$mail]);
 		//echo $mail.' ';
 		//print_r($user);
-		if (is_array($user) && !$user['accessAll']) {
+		if (is_array($user) && !isOrgAdmin($user)) {
 			$users[$user['id']]=$user;
 		}
 	}
@@ -141,6 +155,8 @@ function collectionUsersRender($collection) {
 	$users=[];
 	foreach ($collection['users'] as $ace) {
 		$user=$bw->findUser(ORG_ID,['id'=>$ace['id']]);
+		if (!is_array($user)) continue;		//осиротевшая запись ACL
+		if (isOrgAdmin($user)) continue;	//админов не показываем и не сравниваем - у них доступ и так есть
 		$users[]=$user['email'];
 	}
 	sort($users);
@@ -198,6 +214,12 @@ function parseService($service,$authorizedAcl='') {
 				renderCompare($compare);
 				if (!isset($compare['acl']) || $compare['acl']==$authorizedAcl || yn("Вносим изменения? (y/n):")) {
 					$newCol=array_merge($col,$newCol);
+					//возвращаем в ACL записи админов: в сравнении они не участвуют,
+					//но затирать их при обновлении коллекции тоже не надо
+					foreach ($col['users'] as $ace) {
+						if (isOrgAdmin($bw->findUser(ORG_ID,['id'=>$ace['id']])))
+							$newCol['users'][]=$ace;
+					}
 					echo "\e[1;37;40mОбновляем коллекцию\e[0;37;40m\n";
 					renderCollection($newCol);
 					$bw->updateCollection($newCol);
