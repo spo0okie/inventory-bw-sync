@@ -9,6 +9,7 @@ v1.6    ! ускорение: base64 вместо bw encode, тайминги в
 v1.7    ! новые VW (Flexible Collections) отдают админов в ACL коллекций явно вместо accessAll -
           определяем их по роли (type), из сравнения ACL исключаем, при обновлении не затираем
 v1.8    + все операции с вольтом через bw serve (локальный REST) вместо запуска CLI на каждую команду
+v1.9    + общая логика вычисления состояния коллекций вынесена в lib_sync.php (используется также diff.php)
 */
 
 /**
@@ -58,106 +59,11 @@ include dirname(__FILE__).'/config.priv.php';
 require_once dirname(__FILE__).'/lib_inventoryApi.php';
 require_once dirname(__FILE__).'/lib_bwApi.php';
 require_once dirname(__FILE__).'/lib_arrHelper.php';
-
-
-function addTeammate(&$team,$mate) {
-	if (!is_array($mate)) return;
-	if (!isset($mate['Login'])) return;
-	$team[$mate['Login']]=$mate;
-}
-
-function addTeammates(&$team,$mates) {
-	if (!is_array($mates)) return;
-	foreach ($mates as $mate) {
-		addTeammate($team,$mate);
-	}
-}
-
-function serviceTeam($service) {
-	$team=[];
-	addTeammate($team,$service['responsibleRecursive']);
-	addTeammate($team,$service['infrastructureResponsibleRecursive']);
-	addTeammates($team,$service['supportRecursive']);
-	addTeammates($team,$service['infrastructureSupportRecursive']);
-	return $team;
-}
-
-/**
- * Пользователь - владелец/админ организации: доступ ко всем коллекциям у него и так есть.
- * Старые VW помечали таких флагом accessAll, новые (Flexible Collections) флаг убрали
- * и отдают админов явными записями в ACL каждой коллекции - поэтому дополнительно
- * проверяем роль (type: 0=owner, 1=admin). В синхронизации ACL таких не учитываем.
- */
-function isOrgAdmin($user) {
-	if (!is_array($user)) return false;
-	if (!empty($user['accessAll'])) return true;	//старые версии VW
-	return ($user['type']??2)<=1;					//0=owner, 1=admin
-}
-
-function inventoryTeam2Bw($team) {
-	global $bw;
-	$users=[];
-	foreach ($team as $mate) {
-		$mail=strtolower(arrHelper::getField($mate,'Email',''));
-		$user=$bw->findUser(ORG_ID,['email'=>$mail]);
-		//echo $mail.' ';
-		//print_r($user);
-		if (is_array($user) && !isOrgAdmin($user)) {
-			$users[$user['id']]=$user;
-		}
-	}
-	return $users;
-}
-
-function serviceName($service,$postfix='')
-{
-	global $inventory;
-	$name=trim($service['nameWithoutParent']);
-	if ($postfix) $name.='/'.$postfix;
-	if ($service['parent_id']) {
-		if (is_array($parent=$inventory->getService($service['parent_id']))) {
-			return serviceName($parent,$name);
-		}
-	}
-	return $name;
-}
-
-function colParams($service) {
-	$team=serviceTeam($service);
-	if (!count($team)) {
-		echo " - У сервиса нет команды в инвентори!\n";
-		return null;
-	}
-	$users=inventoryTeam2Bw($team);
-	if (!count($users)) {
-		echo " - У сервиса нет команды в VW! :".implode(", ",array_keys($team))."\n";
-		return null;
-	}
-	$access=[];
-	foreach (array_keys($users) as $id) {
-		$access[]=[
-			'id'=>$id,
-			"readOnly"=>false,
-			"hidePasswords"=>false,
- 			"manage"=>false
-		];
-	}
-	return [
-		"organizationId"=>ORG_ID,
-		"name"=>COL_ROOT."/".serviceName($service),
-		"externalId"=>'inventory#'.$service['id'],
-		"users"=>$access,
-		"groups"=>[],
-	];
-}
+require_once dirname(__FILE__).'/lib_sync.php';	//общая логика: colParams, serviceTeam, isOrgAdmin, aclUsers...
 
 function collectionUsersRender($collection) {
-	global $bw;
 	$users=[];
-	foreach ($collection['users'] as $ace) {
-		$user=$bw->findUser(ORG_ID,['id'=>$ace['id']]);
-		if (!is_array($user)) continue;		//осиротевшая запись ACL
-		if (isOrgAdmin($user)) continue;	//админов не показываем и не сравниваем - у них доступ и так есть
+	foreach (aclUsers($collection) as $user) {
 		$users[]=$user['email'];
 	}
 	sort($users);
