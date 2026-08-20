@@ -25,10 +25,11 @@ php ./share.php   # обработка тегов #share:<путь> в notes э�
 
 Оба скрипта — плоские процедурные CLI-скрипты, использующие глобальные переменные `$bw` и `$inventory` и три библиотеки:
 
-- **`lib_bwApi.php`** (`bwApi`) — работа с VW через **два канала одновременно**:
-  - `bw` CLI через `proc_open` (`cliExec`) — списки/создание/изменение коллекций и элементов. JSON для записи прогоняется через `bw encode` и передаётся в stdin.
-  - Web API через curl (`getReq`) — то, чего нет в CLI: список пользователей организации и ACL коллекций (`/collections/details`). Отсюда двойная авторизация: `init_session` логинится и в web API (токен), и в CLI (сессия).
+- **`lib_bwApi.php`** (`bwApi`) — работа с VW через **два канала одновременно** (CLI нужен для криптографии — имена коллекций и содержимое элементов шифрованы ключом организации; web API — для того, чего в CLI нет):
+  - `bw serve` — локальный REST API самого Bitwarden CLI: `init_session` поднимает один долгоживущий процесс (`serveStart`, порт `$servePort`=8087, деструктор его гасит) и все операции с вольтом (unlock/sync/списки/CRUD коллекций и элементов) идут через HTTP (`serveReq`/`serveData`) с обычным JSON. Разовые запуски `bw` через `proc_open` (`cliExec`/`cliCmd`) остались только на старте: `status`/`config`/`login` (у serve нет эндпоинта логина). Порт serve слушает **без аутентификации** (только 127.0.0.1).
+  - Web API через curl (`getReq`) — список пользователей организации и ACL коллекций (`/collections/details`). Отсюда двойная авторизация: `init_session` логинится и в web API (токен), и в CLI.
   - Всё кэшируется в `$bw->cache` (`collections`, `users`, `items`); поиск — `findCollection`/`findUser` по фильтру. Кэш после записи **не** инвалидируется (строки перекэширования закомментированы).
+  - `$showTimings=true` печатает длительность каждого вызова CLI/serve.
 - **`lib_inventoryApi.php`** (`inventoryApi`) — чтение сервисов из REST API Инвентаризации одним запросом (`cacheServices` с `expand=...Recursive`), дальше только работа с кэшем.
 - **`lib_arrHelper.php`** (`arrHelper`) — статические хелперы поиска/фильтрации по массивам, ключевые: `getItemByFields`/`getItemsByFields` (поиск элементов по набору полей, с рекурсивным сравнением вложенных массивов).
 
@@ -36,7 +37,8 @@ php ./share.php   # обработка тегов #share:<путь> в notes э�
 
 - Коллекция VW привязывается к сервису через `externalId = "inventory#<serviceID>"` — это единственный ключ соответствия.
 - Имя коллекции — полный путь: `COL_ROOT/Родитель/Дочерний/...` (в VW у коллекций плоские полные имена, дерево VW строит сам). Путь собирает `serviceName()` рекурсией по `parent_id`.
-- Команда сервиса = responsible + infrastructureResponsible + support + infrastructureSupport (все `*Recursive`), сопоставляется с пользователями VW по email (в нижнем регистре). Пользователи с `accessAll` (суперпользователи) в ACL не включаются.
+- Команда сервиса = responsible + infrastructureResponsible + support + infrastructureSupport (все `*Recursive`), сопоставляется с пользователями VW по email (в нижнем регистре).
+- Владельцы/админы организации (`isOrgAdmin`: `type` 0/1 или старый флаг `accessAll`) в синхронизации ACL не участвуют: новые VW (Flexible Collections) отдают их явными записями в ACL каждой коллекции, поэтому они исключаются из сравнения, а при обновлении коллекции их записи сохраняются как есть.
 
 ### Логика sync.php
 

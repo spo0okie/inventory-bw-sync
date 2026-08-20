@@ -12,9 +12,12 @@ class bwApi {
 	public $passwordCli;
 
 	public $cliPath='/usr/local/bin/bw';
-	public $showTimings=true;	//печатать длительность каждого вызова CLI
+	public $showTimings=true;	//печатать длительность каждого вызова CLI/serve
 	public $cliError;
 	public $cliExitCode;
+
+	public $servePort=8087;		//порт локального REST API (bw serve)
+	public $serveProc=null;		//null - не запускали, false - используем чужой процесс, resource - наш
 
 	public function __construct($url,$login,$passWeb,$passCli) {
 		$this->baseUrl=$url;
@@ -24,6 +27,17 @@ class bwApi {
 	}
 
 	//выполняет команду 
+	//переменные окружения для запуска bw (разовые команды и serve)
+	public function cliEnv() {
+		$variables=array_merge($_SERVER,[
+			'NODE_EXTRA_CA_CERTS'=>'/etc/ssl/certs/ca-certificates.crt',
+			'NODE_TLS_REJECT_UNAUTHORIZED'=>0,
+		]);
+		if ($this->session) $variables['BW_SESSION']=$this->session;
+		unset($variables['argv']);
+		return $variables;
+	}
+
 	public function cliExec($cmd,$input='') {
 		$t0=microtime(true);
 		//дескрипторы
@@ -33,14 +47,7 @@ class bwApi {
 			2 => ['pipe','w'],	//STDERR
 		];
 
-		//переменные окружения
-		$variables=array_merge($_SERVER,[
-			'NODE_EXTRA_CA_CERTS'=>'/etc/ssl/certs/ca-certificates.crt',
-			'NODE_TLS_REJECT_UNAUTHORIZED'=>0,
-		]);
-		if ($this->session) $variables['BW_SESSION']=$this->session;
-
-		unset($variables['argv']);
+		$variables=$this->cliEnv();
 
 		//процесс
 		$proc=proc_open(
@@ -109,6 +116,80 @@ class bwApi {
 		return $json;
 	}
 
+	/**
+	 * Поднимаем локальный REST API (bw serve): один долгоживущий процесс с расшифрованным
+	 * вольтом в памяти вместо запуска node (~1-2c) на каждую команду.
+	 * ВНИМАНИЕ: порт слушает без аутентификации (bind только на 127.0.0.1)
+	 */
+	public function serveStart() {
+		if (!is_null($this->serveProc)) return;
+
+		//возможно serve уже висит с прошлого (упавшего) запуска - тогда используем его
+		if (is_array($this->serveReq('GET','/status',null,true))) {
+			echo "(найден работающий serve) ";
+			$this->serveProc=false;	//не наш процесс - в деструкторе не убивать
+			return;
+		}
+
+		$desc=[	//вывод никуда: если читать пайпы лень, они переполнятся и повесят процесс
+			0 => ['file','/dev/null','r'],
+			1 => ['file','/dev/null','a'],
+			2 => ['file','/dev/null','a'],
+		];
+		$this->serveProc=proc_open(
+			$this->cliPath." serve --hostname 127.0.0.1 --port {$this->servePort}",
+			$desc,$pipes,null,$this->cliEnv()
+		);
+
+		//ждем готовности (до 10 секунд)
+		for ($i=0;$i<50;$i++) {
+			usleep(200000);
+			if (is_array($this->serveReq('GET','/status',null,true))) return;
+		}
+		echo "ERROR: bw serve не поднялся на 127.0.0.1:{$this->servePort}\n";
+		exit (5);
+	}
+
+	//запрос к bw serve; возвращает раскодированный ответ или false
+	public function serveReq($method,$path,$body=null,$quiet=false) {
+		$t0=microtime(true);
+		$ch=curl_init();
+		curl_setopt($ch, CURLOPT_URL,"http://127.0.0.1:{$this->servePort}".$path);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER,1);
+		curl_setopt($ch, CURLOPT_CUSTOMREQUEST,$method);
+		if (!is_null($body)) {
+			curl_setopt($ch, CURLOPT_POSTFIELDS,JSON_ENCODE($body,JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE));
+			curl_setopt($ch, CURLOPT_HTTPHEADER,['Content-Type: application/json']);
+		}
+		$data=curl_exec($ch);
+		curl_close($ch);
+		if ($this->showTimings && !$quiet)
+			printf("\t[serve %s %s: %.2fs]\n",$method,strtok($path,'?'),microtime(true)-$t0);
+		if ($data===false) return false;
+		$json=JSON_DECODE($data,true);
+		return is_array($json)?$json:false;
+	}
+
+	//запрос к serve с контролем успеха; возвращает содержимое data
+	//$fatal=false - при ошибке не прерываем скрипт (поведение старых операций записи), возвращаем null
+	public function serveData($method,$path,$body=null,$fatal=true) {
+		$json=$this->serveReq($method,$path,$body);
+		if (!is_array($json) || empty($json['success'])) {
+			echo "SERVE ERROR on [$method $path]: ".($json['message']??'нет ответа')."\n";
+			if ($fatal) exit (6);
+			return null;
+		}
+		return $json['data']??null;
+	}
+
+	public function __destruct() {
+		//гасим наш процесс bw serve (чужой не трогаем)
+		if (is_resource($this->serveProc)) {
+			proc_terminate($this->serveProc);
+			proc_close($this->serveProc);
+		}
+	}
+
 	public function init_session() {
 		if (!is_null($this->session)&&!is_null($this->token)) return;
 		$form=[
@@ -151,26 +232,24 @@ class bwApi {
 			$this->cliCmd("config server {$this->baseUrl} --quiet");
 			$status=$this->cliGetJson('status');
 		}
-		switch ($status['status']??'ERROR') {
-			case 'unauthenticated':
-				echo "logging in ... ";
-				$data=$this->cliCmd("login {$this->login} {$this->passwordCli} --raw");
-				break;
-			case 'locked':
-				echo "unlocking ... ";
-				$data=$this->cliCmd("unlock --raw",$this->passwordCli);
-				break;
-			default:
-				echo "CLI ERROR: Unknown login status [{$status['status']}]\n";
-				exit (4);
-		}
-		if (!strlen($data)) {
-			echo "ERROR AUTHENTICATING VW CLI\n";
-			exit;
+		if (($status['status']??'ERROR')==='unauthenticated') {
+			//залогиниться можно только разовой командой (у serve нет /login)
+			echo "logging in ... ";
+			$data=$this->cliCmd("login {$this->login} {$this->passwordCli} --raw");
+			if (!strlen($data)) {
+				echo "ERROR AUTHENTICATING VW CLI\n";
+				exit;
+			}
 		}
 
-		$this->session=$data;
-		$this->cliCmd('sync');
+		//дальше все операции с вольтом - через локальный REST (bw serve)
+		echo "starting serve ... ";
+		$this->serveStart();
+		echo "unlocking ... ";
+		$this->serveData('POST','/unlock',['password'=>$this->passwordCli]);
+		$this->session='@serve';	//сессию держит процесс serve, тут лишь маркер что инициализация пройдена
+		echo "syncing ... ";
+		$this->serveData('POST','/sync');
 	}
 
 	public function getReq($path) {
@@ -190,8 +269,8 @@ class bwApi {
 
 		$this->init_session();
 
-		$collections=$this->cliGetJson("list org-collections --organizationid ".$org_id);
-		$this->cache['collections']=$collections;
+		$collections=$this->serveData('GET','/list/object/org-collections?organizationId='.$org_id);
+		$this->cache['collections']=$collections['data'];
 
 		$data=$this->getReq('/api/organizations/'.$org_id.'/collections/details');
 		if (strlen($data) && is_array($collections=JSON_DECODE($data,true)) && isset($collections['data'])) {
@@ -253,8 +332,8 @@ class bwApi {
 
 		$this->init_session();
 		//sync уже сделан в init_session, второй раз не нужен
-		$items=$this->cliGetJson("list items");
-		$this->cache['items']=$items;
+		$items=$this->serveData('GET','/list/object/items');
+		$this->cache['items']=$items['data'];
 	}
 
 	public function findCollection($org_id,$filter) {
@@ -273,32 +352,19 @@ class bwApi {
 	}
 
 	public function createCollection($col) {
-	    $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
-	    $bwEncoded=base64_encode($jsonEncoded);	//bw encode = base64, делаем сами не дергая CLI
-        $this->cliExec($this->cliPath.' create org-collection --organizationid '.$col['organizationId'],$bwEncoded);
+		$this->serveData('POST','/object/org-collection?organizationId='.$col['organizationId'],$col,false);
 		//$this->cache_collections($col['organizationId'],true);
 	}
 
 	public function updateCollection($col) {
-        $jsonEncoded=JSON_ENCODE($col,JSON_UNESCAPED_UNICODE);
-		//echo $jsonEncoded."\n";
-        $bwEncoded=base64_encode($jsonEncoded);	//bw encode = base64, делаем сами не дергая CLI
-        $this->cliExec($this->cliPath.' edit org-collection --organizationid '.$col['organizationId'].' '.$col['id'],$bwEncoded);
-        //$this->cache_collections($col['organizationId'],true);
+		$this->serveData('PUT','/object/org-collection/'.$col['id'].'?organizationId='.$col['organizationId'],$col,false);
+		//$this->cache_collections($col['organizationId'],true);
 	}
 
 
 
 	public function updateItem($item) {
-        $jsonEncoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE);
-		if (!strlen($jsonEncoded)) {
-			print_r($item);
-			echo json_last_error_msg()."\n";
-			return;
-		}
-
-        $bwEncoded=base64_encode($jsonEncoded);	//bw encode = base64, делаем сами не дергая CLI
-        $this->cliExec($this->cliPath.' edit item '.$item['id'],$bwEncoded);
+		$this->serveData('PUT','/object/item/'.$item['id'],$item,false);
 	}
 
 	public function createItem($item) {
@@ -306,24 +372,8 @@ class bwApi {
 			unset($item['id']);
 		}
 
-		$encoded = JSON_ENCODE($item,JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_IGNORE);
-		if (!strlen($encoded)) {
-			print_r($item);
-			echo json_last_error_msg()."\n";
-			return '';
-		}
-
-		$bwEncoded=base64_encode($encoded);	//bw encode = base64, делаем сами не дергая CLI
-		//echo "$bwEncoded\n";
-
-		$data=$this->cliExec($this->cliPath.' create item',$bwEncoded);
-		if (strlen($data)) {
-			$json=JSON_DECODE($data,true);
-			return $json['id']??'';
-		} else {
-			echo "Error creating item (CLI interface)\n";
-			return '';
-		}
+		$data=$this->serveData('POST','/object/item',$item,false);
+		return $data['id']??'';
 		//$this->cache_items(true);
 	}
 
@@ -332,7 +382,7 @@ class bwApi {
 			echo "Cant delete item without ID set\n";
 			return;
 		}
-		$this->cliExec($this->cliPath." delete item {$item['id']}");
+		$this->serveData('DELETE','/object/item/'.$item['id'],null,false);
 		//$this->cache_items(true);
 	}
 
