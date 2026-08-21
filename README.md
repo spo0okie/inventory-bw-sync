@@ -42,9 +42,41 @@ Read-only отчет: показывает, что изменит sync.php, ни
   * Поддеревья с одинаковыми изменениями сворачиваются: "сервис (+13 субсервисов) доступ: Иванов, Петров, -Сидоров, +Кузнецов"
   * Код возврата: **0** - изменений нет, **1** - есть изменения, **>1** - ошибка
 
+### Отправка письма через Exchange (mutt, Debian)
+```bash
+apt install mutt
+```
+**~/.muttrc** пользователя, из-под которого крутится cron:
+```
+set realname = "Inventory BW sync"
+set from = "inventory-vw@corp.ru"
+
+# вариант 1: авторизованная отправка (порт 587, STARTTLS)
+# логин в UPN-формате, @ кодируется как %40
+set smtp_url = "smtp://inventory-vw%40corp.ru@exchange.corp.ru:587/"
+set smtp_pass = "пароль"
+set ssl_starttls = yes
+set ssl_force_tls = yes
+# без этого mutt может выбрать механизм (NTLM/GSSAPI), на котором Exchange
+# отвечает "SASL authentication failed" - фиксируем обычную авторизацию
+set smtp_authenticators = "login:plain"
+
+# вариант 2: внутренний relay-коннектор без авторизации (порт 25) -
+# если на Receive Connector разрешена анонимная отправка с IP этого сервера
+#set smtp_url = "smtp://exchange.corp.ru:25/"
+```
+  * From должен совпадать с ящиком авторизованного пользователя (или быть разрешен на relay-коннекторе)
+  * если сертификат Exchange выпущен внутренним CA - mutt берет доверенные CA из системного хранилища,
+    достаточно того же CA что ставили для VW (```update-ca-certificates```)
+
+Проверка отправки HTML руками:
+```bash
+mutt -e 'set content_type=text/html' -s "тест" admin@corp.ru < /tmp/bw-diff.html
+```
+
 Утреннее письмо, если есть изменения, ожидающие подтверждения (cron):
 ```bash
 0 7 * * 1-5 cd /opt/inventory-bw-sync && php ./diff.php /tmp/bw-diff.html 2>>/var/log/bw-diff.log; \
-  [ $? -eq 1 ] && ( echo "Subject: VW: изменения ожидают подтверждения"; \
-  echo "Content-Type: text/html; charset=utf-8"; echo; cat /tmp/bw-diff.html ) | sendmail admin@corp.ru
+  [ $? -eq 1 ] && mutt -e 'set content_type=text/html' \
+  -s "VW: изменения ожидают подтверждения" admin@corp.ru < /tmp/bw-diff.html
 ```

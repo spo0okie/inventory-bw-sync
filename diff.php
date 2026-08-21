@@ -149,7 +149,8 @@ function pluralRu($n,$one,$few,$many) {
 
 function userLabel($user) {
 	$name=trim($user['name']??'');
-	return strlen($name)?$name:$user['email'];
+	//имя без почты неоднозначно (тезки/однофамильцы) - показываем и то и другое
+	return strlen($name)?$name.' ('.$user['email'].')':$user['email'];
 }
 
 /**
